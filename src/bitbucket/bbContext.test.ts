@@ -468,7 +468,7 @@ describe('BitbucketContext', () => {
             jest.spyOn(mockRepoMap, 'clear');
 
             // Call refreshRepos manually to test
-            await bitbucketContext['refreshRepos']();
+            await bitbucketContext['refreshRepos']('test');
 
             expect(mockPullRequestCache.clear).toHaveBeenCalled();
             expect(mockRepoMap.clear).toHaveBeenCalled();

@@ -59,6 +59,7 @@ export enum AuthInfoState {
 export interface AuthInfo {
     user: UserInfo;
     state: AuthInfoState;
+    fromGitCredential?: boolean;
 }
 
 export interface OAuthInfo extends AuthInfo {
@@ -76,6 +77,7 @@ export interface PATAuthInfo extends AuthInfo {
 export interface BasicAuthInfo extends AuthInfo {
     username: string;
     password: string;
+    fromGitCredential?: boolean;
 }
 
 export interface UserInfo {
@@ -158,6 +160,7 @@ export const emptyBasicAuthInfo: BasicAuthInfo = {
     username: '',
     password: '',
     state: AuthInfoState.Valid,
+    fromGitCredential: false,
 };
 
 export function isUpdateAuthEvent(a: AuthInfoEvent): a is UpdateAuthInfoEvent {

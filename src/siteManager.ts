@@ -15,6 +15,7 @@ import {
 import { CredentialManager } from './atlclients/authStore';
 import { configuration } from './config/configuration';
 import { Container } from './container';
+import { Logger } from './logger';
 
 export type SitesAvailableUpdateEvent = {
     sites: DetailedSiteInfo[];
@@ -53,7 +54,9 @@ export class SiteManager extends Disposable {
     public addOrUpdateSite(newSite: DetailedSiteInfo) {
         const allSites = this.readSitesFromGlobalStore(newSite.product.key);
         const oldSite = allSites?.find((site) => site.id === newSite.id && site.userId === newSite.userId);
-        if (oldSite) {
+        if (JSON.stringify(oldSite) === JSON.stringify(newSite)) {
+            Logger.warn(`addOrUpdateSite(${newSite}) but old site is the same!`);
+        } else if (oldSite) {
             this.updateSite(oldSite, newSite);
         } else {
             this.addSites([newSite]);
@@ -89,6 +92,9 @@ export class SiteManager extends Disposable {
         this._sitesAvailable.set(productKey, allSites);
 
         if (notify) {
+            Logger.info(
+                `this._onDidSitesAvailableChange.fire (from addSites w/ newSites = ${JSON.stringify(newSites)})`,
+            );
             this._onDidSitesAvailableChange.fire({
                 sites: allSites,
                 newSites: newSites,
@@ -106,6 +112,9 @@ export class SiteManager extends Disposable {
 
                 this._globalStore.update(`${newSite.product.key}${SitesSuffix}`, allSites);
                 this._sitesAvailable.set(newSite.product.key, allSites);
+                Logger.info(
+                    `this._onDidSitesAvailableChange.fire (from updateSite w/ oldSite = ${JSON.stringify(oldSite)}, newSite = ${JSON.stringify(newSite)})`,
+                );
                 this._onDidSitesAvailableChange.fire({ sites: [newSite], product: newSite.product });
             }
         }
@@ -116,12 +125,18 @@ export class SiteManager extends Disposable {
             const deadSites = this.getSitesAvailable(e.product).filter((site) => site.credentialId === e.credentialId);
             deadSites.forEach((s) => this.removeSite(s));
             if (deadSites.length > 0) {
+                Logger.info(
+                    `this._onDidSitesAvailableChange.fire (from onDidAuthChange removed w/ e = ${JSON.stringify(e)}, deadSites = ${JSON.stringify(deadSites)})`,
+                );
                 this._onDidSitesAvailableChange.fire({
                     sites: this.getSitesAvailable(e.product),
                     product: e.product,
                 });
             }
         } else if (isUpdateAuthEvent(e)) {
+            Logger.info(
+                `this._onDidSitesAvailableChange.fire (from onDidAuthChange updated w/ e = ${JSON.stringify(e)})`,
+            );
             this._onDidSitesAvailableChange.fire({
                 sites: this.getSitesAvailable(e.site.product),
                 product: e.site.product,
@@ -257,6 +272,7 @@ export class SiteManager extends Disposable {
                 this._globalStore.update(`${site.product.key}${SitesSuffix}`, sites);
                 this._sitesAvailable.set(site.product.key, sites);
                 this._onDidSitesAvailableChange.fire({ sites: sites, product: site.product });
+                Logger.info(`this._onDidSitesAvailableChange.fire (from removeSite w/ site = ${JSON.stringify(site)})`);
                 Container.credentialManager.removeAuthInfo(deletedSite);
 
                 if (deletedSite.id === Container.config.jira.lastCreateSiteAndProject.siteId) {

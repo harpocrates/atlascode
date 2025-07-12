@@ -231,7 +231,8 @@ export class LoginManager {
         const userId = site.product.key === ProductJira.key ? json.name : json.slug;
         const baseLinkUrl = `${site.host}${contextPath}`;
         const siteId = isBasicAuthInfo(credentials) ? baseLinkUrl : site.product.key;
-        const username = isBasicAuthInfo(credentials) ? credentials.username : userId;
+        const username =
+            isBasicAuthInfo(credentials) && credentials.fromGitCredential === undefined ? credentials.username : userId;
         const credentialId = CredentialManager.generateCredentialId(siteId, username);
 
         const siteDetails: DetailedSiteInfo = {

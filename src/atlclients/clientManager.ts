@@ -38,6 +38,7 @@ import {
 import { BasicInterceptor } from './basicInterceptor';
 
 const oauthTTL: number = 45 * Time.MINUTES;
+const gitCredentialsTTL: number = 1 * Time.MINUTES;
 const serverTTL: number = Time.FOREVER;
 
 export class ClientManager implements Disposable {
@@ -79,6 +80,7 @@ export class ClientManager implements Disposable {
     }
 
     private onSitesDidChange(e: SitesAvailableUpdateEvent) {
+        Logger.debug('clientManager.onSitesDidChange', JSON.stringify(e));
         this._agentChanged = true;
     }
 
@@ -285,6 +287,9 @@ export class ClientManager implements Disposable {
                     const diff = credentials.expirationDate - Date.now();
                     ttl = diff;
                 }
+            } else if (credentials.fromGitCredential !== undefined) {
+                // TODO use actual TTL from creds
+                ttl = gitCredentialsTTL;
             } else {
                 ttl = serverTTL;
             }

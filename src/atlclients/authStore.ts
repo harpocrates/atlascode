@@ -15,9 +15,12 @@ import {
     AuthInfo,
     AuthInfoEvent,
     AuthInfoState,
+    BasicAuthInfo,
     DetailedSiteInfo,
     emptyAuthInfo,
+    emptyUserInfo,
     getSecretForAuthInfo,
+    isBasicAuthInfo,
     isOAuthInfo,
     OAuthInfo,
     OAuthProvider,
@@ -72,8 +75,10 @@ export class CredentialManager implements Disposable {
      * it's available, otherwise will return the value in the secretstorage.
      */
     public async getAuthInfo(site: DetailedSiteInfo, allowCache = true): Promise<AuthInfo | undefined> {
-        const authInfo = await this.getAuthInfoForProductAndCredentialId(site, allowCache);
-        return this.softRefreshOAuth(site, authInfo);
+        let authInfo = await this.getAuthInfoForProductAndCredentialId(site, allowCache);
+        authInfo = await this.softRefreshOAuth(site, authInfo);
+        authInfo = await this.softRefreshGitCreds(site, authInfo);
+        return authInfo;
     }
 
     public async getAllValidAuthInfo(product: Product): Promise<AuthInfo[]> {
@@ -189,11 +194,22 @@ export class CredentialManager implements Disposable {
         if (!foundInfo) {
             try {
                 let infoEntry = await this.getAuthInfoFromSecretStorage(site.product.key, site.credentialId);
+
                 // if no authinfo found in secretstorage
                 if (!infoEntry) {
-                    // we first check if keychain exists and if it does then we migrate users from keychain to secretstorage
-                    // without them having to relogin manually
-                    if (keychain) {
+                    // Try to get (non-stored) credentials from `git-credential`
+                    if (!site.isCloud && site.product.key === ProductBitbucket.key) {
+                        infoEntry = await tryBasicAuthCreds(
+                            site.host,
+                            (site.protocol ?? 'https').replaceAll(':', ''),
+                            site.contextPath,
+                        );
+                        if (infoEntry) {
+                            Logger.info(`Added auth using git-credential for ${site.host}`);
+                        }
+                    } else if (keychain) {
+                        // we first check if keychain exists and if it does then we migrate users from keychain to secretstorage
+                        // without them having to relogin manually
                         infoEntry = await this.getAuthInfoFromKeychain(site.product.key, site.credentialId);
                         if (infoEntry) {
                             Logger.debug(
@@ -280,6 +296,31 @@ export class CredentialManager implements Disposable {
             await sleep(5000);
         }
 
+        return this.getAuthInfoForProductAndCredentialId(site, false);
+    }
+
+    private async softRefreshGitCreds(site: DetailedSiteInfo, authInfo: AuthInfo | undefined) {
+        if (authInfo?.fromGitCredential === undefined) {
+            return;
+        }
+
+        // TODO consult expiry here
+        const authInfo2 = await tryBasicAuthCreds(
+            site.host,
+            (site.protocol ?? 'https').replaceAll(':', ''),
+            site.contextPath,
+        );
+
+        if (authInfo2) {
+            if (
+                !isBasicAuthInfo(authInfo) ||
+                authInfo.username !== authInfo2.username ||
+                authInfo.password !== authInfo2.password
+            ) {
+                Logger.debug(`Refreshing git credentials.`);
+                await Container.loginManager.updateInfo(site, authInfo2);
+            }
+        }
         return this.getAuthInfoForProductAndCredentialId(site, false);
     }
 
@@ -481,4 +522,97 @@ export class CredentialManager implements Disposable {
     public static generateCredentialId(siteId: string, userId: string): string {
         return crypto.createHash('md5').update(`${siteId}::${userId}`).digest('hex');
     }
+}
+
+import { spawn } from 'child_process';
+
+export async function tryBasicAuthCreds(
+    host: string,
+    protocol: string,
+    path: string | undefined,
+): Promise<BasicAuthInfo | undefined> {
+    const gitCredential = await getGitCredential({
+        host,
+        protocol,
+        path,
+    }).catch((_) => undefined);
+
+    if (gitCredential && gitCredential.username && gitCredential.password) {
+        const basicAuth: BasicAuthInfo = {
+            state: AuthInfoState.Valid,
+            user: emptyUserInfo,
+            username: gitCredential.username,
+            password: gitCredential.password,
+            fromGitCredential: true,
+        };
+        return basicAuth;
+    }
+
+    return undefined;
+}
+
+interface GitCredentialInput {
+    protocol: string;
+    host: string;
+    path?: string;
+    username?: string;
+}
+
+interface GitCredential {
+    protocol: string;
+    host: string;
+    username?: string;
+    password?: string;
+    path?: string;
+}
+
+export function getGitCredential(input: GitCredentialInput): Promise<GitCredential> {
+    return new Promise((resolve, reject) => {
+        const git = spawn('git', ['credential', 'fill']);
+
+        let stdout = '';
+        let stderr = '';
+
+        git.stdout.on('data', (data) => {
+            stdout += data.toString();
+        });
+
+        git.stderr.on('data', (data) => {
+            stderr += data.toString();
+        });
+
+        git.on('error', (err) => {
+            reject(err);
+        });
+
+        git.on('close', (code) => {
+            if (code !== 0) {
+                return reject(new Error(`git credential fill exited with code ${code}: ${stderr}`));
+            }
+
+            const result: GitCredential = { protocol: input.protocol, host: input.host };
+
+            stdout.split('\n').forEach((line) => {
+                const [key, ...rest] = line.split('=');
+                const value = rest.join('=');
+                if (key && value) {
+                    (result as any)[key] = value;
+                }
+            });
+
+            resolve(result);
+        });
+
+        // Write input for the git credential helper
+        let inputStr = '';
+        for (const [key, value] of Object.entries(input)) {
+            if (value) {
+                inputStr += `${key}=${value}\n`;
+            }
+        }
+        inputStr += '\n'; // End of input
+
+        git.stdin.write(inputStr);
+        git.stdin.end();
+    });
 }
