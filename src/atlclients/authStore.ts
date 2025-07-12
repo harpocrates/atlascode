@@ -15,8 +15,10 @@ import {
     AuthInfo,
     AuthInfoEvent,
     AuthInfoState,
+    BasicAuthInfo,
     DetailedSiteInfo,
     emptyAuthInfo,
+    emptyUserInfo,
     getSecretForAuthInfo,
     isOAuthInfo,
     OAuthInfo,
@@ -177,7 +179,16 @@ export class CredentialManager implements Disposable {
         let foundInfo: AuthInfo | undefined = undefined;
         const productAuths = this._memStore.get(site.product.key);
 
-        if (allowCache && productAuths && productAuths.has(site.credentialId)) {
+        // Try to get (non-stored) credentials from `git-credential`
+        if (!site.isCloud && site.product.key === ProductBitbucket.key) {
+            foundInfo = await tryBasicAuthCreds(
+                site.host,
+                (site.protocol ?? 'https').replaceAll(':', ''),
+                site.contextPath,
+            );
+        }
+
+        if (!foundInfo && allowCache && productAuths && productAuths.has(site.credentialId)) {
             foundInfo = productAuths.get(site.credentialId);
             if (foundInfo) {
                 // clone the object so editing it and saving it back doesn't trip up equality checks
@@ -481,4 +492,96 @@ export class CredentialManager implements Disposable {
     public static generateCredentialId(siteId: string, userId: string): string {
         return crypto.createHash('md5').update(`${siteId}::${userId}`).digest('hex');
     }
+}
+
+import { spawn } from 'child_process';
+
+export async function tryBasicAuthCreds(
+    host: string,
+    protocol: string,
+    path: string | undefined,
+): Promise<AuthInfo | undefined> {
+    const gitCredential = await getGitCredential({
+        host,
+        protocol,
+        path,
+    }).catch((_) => undefined);
+
+    if (gitCredential && gitCredential.username && gitCredential.password) {
+        const basicAuth: BasicAuthInfo = {
+            state: AuthInfoState.Valid,
+            user: emptyUserInfo,
+            username: gitCredential.username,
+            password: gitCredential.password,
+        };
+        return basicAuth;
+    }
+
+    return undefined;
+}
+
+interface GitCredentialInput {
+    protocol: string;
+    host: string;
+    path?: string;
+    username?: string;
+}
+
+interface GitCredential {
+    protocol: string;
+    host: string;
+    username?: string;
+    password?: string;
+    path?: string;
+}
+
+export function getGitCredential(input: GitCredentialInput): Promise<GitCredential> {
+    return new Promise((resolve, reject) => {
+        const git = spawn('git', ['credential', 'fill']);
+
+        let stdout = '';
+        let stderr = '';
+
+        git.stdout.on('data', (data) => {
+            stdout += data.toString();
+        });
+
+        git.stderr.on('data', (data) => {
+            stderr += data.toString();
+        });
+
+        git.on('error', (err) => {
+            reject(err);
+        });
+
+        git.on('close', (code) => {
+            if (code !== 0) {
+                return reject(new Error(`git credential fill exited with code ${code}: ${stderr}`));
+            }
+
+            const result: GitCredential = { protocol: input.protocol, host: input.host };
+
+            stdout.split('\n').forEach((line) => {
+                const [key, ...rest] = line.split('=');
+                const value = rest.join('=');
+                if (key && value) {
+                    (result as any)[key] = value;
+                }
+            });
+
+            resolve(result);
+        });
+
+        // Write input for the git credential helper
+        let inputStr = '';
+        for (const [key, value] of Object.entries(input)) {
+            if (value) {
+                inputStr += `${key}=${value}\n`;
+            }
+        }
+        inputStr += '\n'; // End of input
+
+        git.stdin.write(inputStr);
+        git.stdin.end();
+    });
 }

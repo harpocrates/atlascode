@@ -1,6 +1,7 @@
+import { tryBasicAuthCreds } from 'src/atlclients/authStore';
 import { Disposable, Event, EventEmitter, Uri } from 'vscode';
 
-import { DetailedSiteInfo, ProductBitbucket } from '../atlclients/authInfo';
+import { DetailedSiteInfo, ProductBitbucket, SiteInfo } from '../atlclients/authInfo';
 import { bbAPIConnectivityError } from '../constants';
 import { Container } from '../container';
 import { Logger } from '../logger';
@@ -9,7 +10,14 @@ import { CacheMap } from '../util/cachemap';
 import { Time } from '../util/time';
 import { PullRequestCommentController } from '../views/pullrequest/prCommentController';
 import { PullRequestsExplorer } from '../views/pullrequest/pullRequestsExplorer';
-import { clientForSite, getBitbucketCloudRemotes, getBitbucketRemotes, workspaceRepoFor } from './bbUtils';
+import {
+    clientForSite,
+    getBitbucketCloudRemotes,
+    getBitbucketRemotes,
+    parseGitUrl,
+    urlForRemote,
+    workspaceRepoFor,
+} from './bbUtils';
 import { BitbucketSite, PullRequest, User, WorkspaceRepo } from './model';
 
 // BitbucketContext stores the context (hosts, auth, current repo etc.)
@@ -92,8 +100,10 @@ export class BitbucketContext extends Disposable {
         this._pullRequestCache.clear();
         this._repoMap.clear();
 
+        const sites = Container.siteManager.getSitesAvailable(ProductBitbucket);
+
         await Promise.all(
-            Container.siteManager.getSitesAvailable(ProductBitbucket).map(async (site) => {
+            sites.map(async (site) => {
                 try {
                     const bbApi = await Container.clientManager.bbClient(site);
                     const mirrorHosts = await bbApi.repositories.getMirrorHosts();
@@ -116,6 +126,38 @@ export class BitbucketContext extends Disposable {
                 this._repoMap.set(repo.rootUri.toString(), workspaceRepoFor(repo));
             } else {
                 Logger.warn(`JS-1324 no remotes found for ${repo.rootUri}`);
+            }
+
+            // Try to discover new sites
+            for (const remote of repo.state.remotes) {
+                const remoteUrl = urlForRemote(remote);
+                const parsed = parseGitUrl(remoteUrl);
+                const siteInfo: SiteInfo = {
+                    protocol: parsed.protocol + ':',
+                    host: parsed.resource,
+                    product: ProductBitbucket,
+                };
+
+                const existingSite = sites.find(
+                    (site) => site.host === siteInfo.host && site.protocol === siteInfo.protocol,
+                );
+
+                // Skip existing sites. This is more than just an optimization - adding the site
+                // re-triggers `refreshRepos` so this is needed to avoid an infinite loop.
+                if (!existingSite) {
+                    const authInfo = await tryBasicAuthCreds(siteInfo.host, parsed.protocol, parsed.pathname);
+
+                    if (authInfo) {
+                        try {
+                            await Container.loginManager.updateInfo(siteInfo, authInfo);
+                            Logger.info(`Added credentials for ${remoteUrl} from git-credential`);
+                        } catch (err) {
+                            Logger.error(err, `Failed to add credentials for ${remoteUrl} from git-credential`);
+                        }
+                    } else {
+                        Logger.warn(`Failed to get credentials for ${remoteUrl} from git-credential`);
+                    }
+                }
             }
         }
 

@@ -37,10 +37,7 @@
     "activationEvents": [
         "onStartupFinished"
     ],
-    "extensionDependencies": [
-        "vscode.git",
-        "redhat.vscode-yaml"
-    ],
+    "extensionDependencies": [],
     "extensionKind": [
         "workspace"
     ],
@@ -868,7 +865,7 @@
                 },
                 "atlascode.outputLevel": {
                     "type": "string",
-                    "default": "silent",
+                    "default": "debug",
                     "enum": [
                         "silent",
                         "errors",
@@ -925,7 +922,7 @@
                 },
                 "atlascode.showWelcomeOnInstall": {
                     "type": "boolean",
-                    "default": true,
+                    "default": false,
                     "description": "Enables showing the welcome screen when a new version is installed",
                     "scope": "window"
                 },
@@ -934,16 +931,13 @@
                     "items": {
                         "type": "string"
                     },
-                    "default": [
-                        "https://www.atlassian.com",
-                        "https://bitbucket.org"
-                    ],
+                    "default": [],
                     "description": "Online Checker will ping these URLs to determine online status",
                     "scope": "window"
                 },
                 "atlascode.jira.enabled": {
                     "type": "boolean",
-                    "default": true,
+                    "default": false,
                     "description": "Enables Jira Functionality",
                     "scope": "window"
                 },
@@ -976,7 +970,7 @@
                 },
                 "atlascode.jira.explorer.monitorEnabled": {
                     "type": "boolean",
-                    "default": true,
+                    "default": false,
                     "description": "Show notifications when new issues are created for default site and project",
                     "scope": "window"
                 },
@@ -1000,31 +994,31 @@
                 },
                 "atlascode.jira.statusbar.enabled": {
                     "type": "boolean",
-                    "default": true,
+                    "default": false,
                     "description": "Enables the Jira StatusBar Item",
                     "scope": "window"
                 },
                 "atlascode.jira.statusbar.showProduct": {
                     "type": "boolean",
-                    "default": true,
+                    "default": false,
                     "description": "Shows the product name in the status bar",
                     "scope": "window"
                 },
                 "atlascode.jira.statusbar.showUser": {
                     "type": "boolean",
-                    "default": true,
+                    "default": false,
                     "description": "Shows the user's name in the status bar",
                     "scope": "window"
                 },
                 "atlascode.jira.statusbar.showLogin": {
                     "type": "boolean",
-                    "default": true,
+                    "default": false,
                     "description": "Shows a login button in the status bar",
                     "scope": "window"
                 },
                 "atlascode.jira.statusbar.showActiveIssue": {
                     "type": "boolean",
-                    "default": true,
+                    "default": false,
                     "description": "Shows active Jira issue key in the status bar",
                     "scope": "window"
                 },
@@ -1093,7 +1087,7 @@
                 },
                 "atlascode.jira.todoIssues.enabled": {
                     "type": "boolean",
-                    "default": true,
+                    "default": false,
                     "description": "Enables the create of Jira issues from TODO comments and similar",
                     "scope": "window"
                 },
@@ -1247,25 +1241,25 @@
                 },
                 "atlascode.bitbucket.statusbar.enabled": {
                     "type": "boolean",
-                    "default": true,
+                    "default": false,
                     "description": "Enables the Bitbucket StatusBar Item",
                     "scope": "window"
                 },
                 "atlascode.bitbucket.statusbar.showProduct": {
                     "type": "boolean",
-                    "default": true,
+                    "default": false,
                     "description": "Shows the product name in the status bar",
                     "scope": "window"
                 },
                 "atlascode.bitbucket.statusbar.showUser": {
                     "type": "boolean",
-                    "default": true,
+                    "default": false,
                     "description": "Shows the user's name in the status bar",
                     "scope": "window"
                 },
                 "atlascode.bitbucket.statusbar.showLogin": {
                     "type": "boolean",
-                    "default": true,
+                    "default": false,
                     "description": "Shows a login button in the status bar",
                     "scope": "window"
                 },
@@ -1277,7 +1271,7 @@
                 },
                 "atlascode.helpExplorerEnabled": {
                     "type": "boolean",
-                    "default": true,
+                    "default": false,
                     "description": "Shows the help explorer treeview",
                     "scope": "window"
                 }
